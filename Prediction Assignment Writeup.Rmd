@@ -1,0 +1,78 @@
+---
+title: "Assignment Writeup"
+author: "Faizal Ramli"
+date: "26 April 2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Importing and Preparing the Data
+The training dataset used in this assignment is pml-training.csv, but since some features in this dataset contain NA or empty string, I firstly delete those features before importing it into R. I named the new data as training-pml.csv which is a pre-cleaned dataset from pml-training that contains only features with no NA nor empty string.
+```{r}
+pml <- read.csv2("training-pml.csv")
+dim(pml)
+str(pml)
+for (i in 6:(dim(pml)[2]-1)) {
+  pml[,i] <- as.numeric(paste(pml[,i]))
+}
+str(pml)
+```
+The pml dataset contains 19622 observations and 58 variables. this dataset contains no NA nor empty string but still has some promblems such as many numeric or integer variables are read to be factor so I again do a pre-processing to handle this.
+
+## Splitting pml Data
+Since the pml data contains a quite large observations, I don't do cross-validation but splitting the pml data into training set and test set instead. the training set will be used to build the model and the test set will be used to estimate out of sample error.
+```{r}
+library(caret)
+set.seed(2504)
+inTrain <- createDataPartition(pml$classe, p = 0.8, list = F)
+training <- pml[inTrain,]
+dim(training)
+test <- pml[-inTrain,]
+dim(test)
+```
+The training set contains 15699 observations which is 80% of total observations of pml dataset, and the rest is in the test set.
+
+## Feature Selection
+The training set contains 57 features, using all these features to build the model can led to overfitting and also not efficient. To select which feature to include in the model, I used Information Gain from FSelector package to see how those features important in predicting the classe variable.
+```{r}
+library(FSelector)
+ig <- information.gain(classe ~ ., data = training)
+ig
+sort(ig$attr_importance, decreasing = TRUE)
+```
+attr_importance measures the dependence between feature and target variable -- classe, the higher the attr_importance the higher the dependence. here I tried to select just 5 features with the highest attr_mportance to be included in the model which are raw_timestamp_part_1, num_window, roll_belt, pitch_belt, and yaw_belt.
+
+## A Plot
+I tried to plot pitch_belt and yaw_belt and splitted the color with classe variable, and here it is.
+```{r}
+library(ggplot2)
+ggplot(data = training, mapping = aes(yaw_belt, pitch_belt, color = classe)) +
+  geom_point()
+ggplot(data = training, mapping = aes(yaw_belt, pitch_belt, color = classe)) +
+  geom_point() +
+  geom_smooth()
+```
+
+## Building the Model
+In this part, I try Random Forest algorithm to train the data. I use randomForest() function from randomForest package instead of train() function with method = 'rf'from caret package since train() function takes a quite long time and hard to compute (in my computer) the model.
+```{r}
+library(randomForest)
+mod <- randomForest(classe ~ raw_timestamp_part_1 + num_window + roll_belt + pitch_belt + yaw_belt, data = training)
+mod
+predt <- predict(mod, test)
+cm <- table(predt, test$classe)
+cm #confusion matrix of test set
+accuracy <- sum(diag(cm))/sum(cm)
+accuracy
+error <- 1 - accuracy
+error
+```
+It can be seen that the model is doing pretty well with the train data, with just 0.02% in sample error. but since in sample error is quite optimistic, so I try to apply the model into test set and find that the estimated out of sample error is also 0.02%.So I will just use this model to predict the pml-testing.csv.
+
+## Predicting pml-testing.csv
+With Random Forest model before, I try to predict 20 observations from pml-testing.csv, and here is the result.
+```{r}
+testing <- read.csv("pml-testing.csv")
+predict(mod, testing)
+```
